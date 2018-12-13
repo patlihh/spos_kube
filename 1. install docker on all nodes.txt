@@ -1,0 +1,410 @@
+> continue . 
+
+Installation of docker in vmware
+
+------------------------------------------------------------------------------------------------------
+
+. install docker in each node
+
+--------------------
+1.+ install docker
+
+   ====- install docker
+
+   - install docker package
+   # yum install docker
+   
+   - enable docker service and auto start on boot, stat docker service, check status
+   # systemctl enable docker
+   # systemctl start docker
+   # systemctl status docker
+
+(
+[root@node0 ~]# systemctl status docker
+¡ñ docker.service - Docker Application Container Engine
+   Loaded: loaded (/usr/lib/systemd/system/docker.service; enabled; vendor preset: disabled)
+   Active: active (running) since Fri 2018-08-31 22:39:59 CST; 15s ago
+     Docs: http://docs.docker.com
+ Main PID: 1521 (dockerd-current)
+   CGroup: /system.slice/docker.service
+           ©À©¤1521 /usr/bin/dockerd-current --add-runtime docker-runc=/usr/libexec/docker/docker...
+           ©¸©¤1527 /usr/bin/docker-containerd-current -l unix:///var/run/docker/libcontainerd/do...
+
+Aug 31 22:39:57 node0 dockerd-current[1521]: time="2018-08-31T22:39:57.491271454+08:00" leve...27"
+Aug 31 22:39:58 node0 dockerd-current[1521]: time="2018-08-31T22:39:58.688216401+08:00" leve...ds"
+Aug 31 22:39:58 node0 dockerd-current[1521]: time="2018-08-31T22:39:58.704494178+08:00" leve...t."
+Aug 31 22:39:58 node0 dockerd-current[1521]: time="2018-08-31T22:39:58.864895133+08:00" leve...ue"
+Aug 31 22:39:59 node0 dockerd-current[1521]: time="2018-08-31T22:39:59.455666092+08:00" leve...ss"
+Aug 31 22:39:59 node0 dockerd-current[1521]: time="2018-08-31T22:39:59.856831596+08:00" leve...e."
+Aug 31 22:39:59 node0 dockerd-current[1521]: time="2018-08-31T22:39:59.924726906+08:00" leve...on"
+Aug 31 22:39:59 node0 dockerd-current[1521]: time="2018-08-31T22:39:59.924803212+08:00" leve...3.1
+Aug 31 22:39:59 node0 dockerd-current[1521]: time="2018-08-31T22:39:59.934036289+08:00" leve...ck"
+Aug 31 22:39:59 node0 systemd[1]: Started Docker Application Container Engine.
+Hint: Some lines were ellipsized, use -l to show in full.
+[root@node0 ~]#
+)
+   
+   - run a container test image to verify if Docker works properly
+   # docker run hello-world
+(
+# docker run hello-world
+Unable to find image 'hello-world:latest' locally
+Trying to pull repository docker.io/library/hello-world ...
+latest: Pulling from docker.io/library/hello-world
+9db2ca6ccae0: Pull complete
+Digest: sha256:4b8ff392a12ed9ea17784bd3c9a8b1fa3299cac44aca35a85c90c5e3c7afacdc
+Status: Downloaded newer image for docker.io/hello-world:latest
+
+Hello from Docker!
+This message shows that your installation appears to be working correctly.
+
+To generate this message, Docker took the following steps:
+ 1. The Docker client contacted the Docker daemon.
+ 2. The Docker daemon pulled the "hello-world" image from the Docker Hub.
+    (amd64)
+ 3. The Docker daemon created a new container from that image which runs the
+    executable that produces the output you are currently reading.
+ 4. The Docker daemon streamed that output to the Docker client, which sent it
+    to your terminal.
+
+To try something more ambitious, you can run an Ubuntu container with:
+ $ docker run -it ubuntu bash
+
+Share images, automate workflows, and more with a free Docker ID:
+ https://hub.docker.com/
+
+For more examples and ideas, visit:
+ https://docs.docker.com/engine/userguide/
+)   
+
+   # docker info
+(
+[root@node0 ~]# docker info
+Containers: 2
+ Running: 0
+ Paused: 0
+ Stopped: 2
+Images: 1
+Server Version: 1.13.1
+Storage Driver: overlay2
+ Backing Filesystem: xfs
+ Supports d_type: true
+ Native Overlay Diff: true
+Logging Driver: journald
+Cgroup Driver: systemd
+Plugins:
+ Volume: local
+ Network: bridge host macvlan null overlay
+Swarm: inactive
+Runtimes: docker-runc runc
+Default Runtime: docker-runc
+Init Binary: /usr/libexec/docker/docker-init-current
+containerd version:  (expected: aa8187dbd3b7ad67d8e5e3a15115d3eef43a7ed1)
+runc version: 5eda6f6fd0c2884c2c8e78a6e7119e8d0ecedb77 (expected: 9df8b306d01f59d3a8029be411de015b7304dd8f)
+init version: fec3683b971d9c3ef73f284f176672c44b448662 (expected: 949e6facb77383876aeff8a6944dde66b3089574)
+Security Options:
+ seccomp
+  WARNING: You're not using the default seccomp profile
+  Profile: /etc/docker/seccomp.json
+ selinux
+Kernel Version: 3.10.0-862.11.6.el7.x86_64
+Operating System: CentOS Linux 7 (Core)
+OSType: linux
+Architecture: x86_64
+Number of Docker Hooks: 3
+CPUs: 2
+Total Memory: 2.763 GiB
+Name: node0
+ID: EABN:CBN4:T7IZ:MOBD:DYRA:OE6G:O2NT:TV7D:MEFV:JGNJ:63H7:S7AI
+Docker Root Dir: /var/lib/docker
+Debug Mode (client): false
+Debug Mode (server): false
+Registry: https://index.docker.io/v1/
+Experimental: false
+Insecure Registries:
+ 127.0.0.0/8
+Live Restore Enabled: false
+Registries: docker.io (secure)
+)
+
+   # docker images
+(
+[root@node0 ~]# docker images
+REPOSITORY              TAG                 IMAGE ID            CREATED             SIZE
+docker.io/hello-world   latest              2cb0d9787c4d        6 weeks ago         1.85 kB
+)
+
+   # docker version
+(
+[root@node0 ~]# docker version
+Client:
+ Version:         1.13.1
+ API version:     1.26
+ Package version: docker-1.13.1-74.git6e3bb8e.el7.centos.x86_64
+ Go version:      go1.9.4
+ Git commit:      6e3bb8e/1.13.1
+ Built:           Tue Aug 21 15:23:37 2018
+ OS/Arch:         linux/amd64
+
+Server:
+ Version:         1.13.1
+ API version:     1.26 (minimum version 1.12)
+ Package version: docker-1.13.1-74.git6e3bb8e.el7.centos.x86_64
+ Go version:      go1.9.4
+ Git commit:      6e3bb8e/1.13.1
+ Built:           Tue Aug 21 15:23:37 2018
+ OS/Arch:         linux/amd64
+ Experimental:    false
+[root@node0 ~]#
+)
+
+    # docker search centos
+(
+INDEX       NAME                                         DESCRIPTION                                     STARS     OFFICIAL   AUTOMATED
+docker.io   docker.io/centos                             The official build of CentOS.                   4585      [OK]
+docker.io   docker.io/ansible/centos7-ansible            Ansible on Centos7                              115                  [OK]
+docker.io   docker.io/jdeathe/centos-ssh                 CentOS-6 6.10 x86_64 / CentOS-7 7.5.1804 x...   99                   [OK]
+docker.io   docker.io/consol/centos-xfce-vnc             Centos container with "headless" VNC sessi...   62                   [OK]
+docker.io   docker.io/imagine10255/centos6-lnmp-php56    centos6-lnmp-php56                              44                   [OK]
+docker.io   docker.io/tutum/centos                       Simple CentOS docker image with SSH access      43
+docker.io   docker.io/centos/mysql-57-centos7            MySQL 5.7 SQL database server                   38
+docker.io   docker.io/gluster/gluster-centos             Official GlusterFS Image [ CentOS-7 +  Glu...   32                   [OK]
+docker.io   docker.io/openshift/base-centos7             A Centos7 derived base image for Source-To...   31
+docker.io   docker.io/centos/python-35-centos7           Platform for building and running Python 3...   29
+docker.io   docker.io/centos/postgresql-96-centos7       PostgreSQL is an advanced Object-Relationa...   26
+docker.io   docker.io/kinogmt/centos-ssh                 CentOS with SSH                                 22                   [OK]
+docker.io   docker.io/openshift/jenkins-2-centos7        A Centos7 based Jenkins v2.x image for use...   15
+docker.io   docker.io/pivotaldata/centos-gpdb-dev        CentOS image for GPDB development. Tag nam...   7
+docker.io   docker.io/openshift/mysql-55-centos7         DEPRECATED: A Centos7 based MySQL v5.5 ima...   6
+docker.io   docker.io/openshift/wildfly-101-centos7      A Centos7 based WildFly v10.1 image for us...   5
+docker.io   docker.io/openshift/jenkins-1-centos7        DEPRECATED: A Centos7 based Jenkins v1.x i...   4
+docker.io   docker.io/darksheer/centos                   Base Centos Image -- Updated hourly             3                    [OK]
+docker.io   docker.io/pivotaldata/centos                 Base centos, freshened up a little with a ...   2
+docker.io   docker.io/pivotaldata/centos-mingw           Using the mingw toolchain to cross-compile...   2
+docker.io   docker.io/blacklabelops/centos               CentOS Base Image! Built and Updates Daily!     1                    [OK]
+docker.io   docker.io/openshift/wildfly-81-centos7       A Centos7 based WildFly v8.1 image for use...   1
+docker.io   docker.io/jameseckersall/sonarr-centos       Sonarr on CentOS 7                              0                    [OK]
+docker.io   docker.io/pivotaldata/centos-gcc-toolchain   CentOS with a toolchain, but unaffiliated ...   0
+docker.io   docker.io/smartentry/centos                  centos with smartentry                          0                    [OK]
+[root@node0 ~]#
+)
+   
+   - to test
+   - list image
+   # docker images
+(
+REPOSITORY              TAG                 IMAGE ID            CREATED             SIZE
+docker.io/centos        latest              5182e96772bf        3 weeks ago         200 MB
+docker.io/hello-world   latest              2cb0d9787c4d        6 weeks ago         1.85 kB
+)
+   - to remove image
+   # docker rmi image_name
+
+   - pull centos image
+   # docker pull centos
+(
+Using default tag: latest
+Trying to pull repository docker.io/library/centos ...
+latest: Pulling from docker.io/library/centos
+256b176beaff: Pull complete
+Digest: sha256:6f6d986d425aeabdc3a02cb61c02abb2e78e57357e92417d6d58332856024faf
+Status: Downloaded newer image for docker.io/centos:latest
+[root@node0 ~]#
+)
+
+   - test run a docker container (with a cmd line)
+   # docker run centos uname -a      (centos is the container image name, uname -a is the command send to
+                                       to container to exec)
+(
+[root@node0 ~]# docker run centos uname -a
+Linux e2a38755d070 3.10.0-862.11.6.el7.x86_64 #1 SMP Tue Aug 14 21:49:04 UTC 2018 x86_64 x86_64 x86_64 GNU/Linux
+)
+
+   **** 
+   REMARK:
+
+   When you execute a command against an image you basically obtain a container. 
+   
+   After the command that is executing into container ends, the container stops (you get a non-running 
+   or exited container). 
+   
+   If you run another command into the same image again a new container is created and so on.
+
+   All the containers created will remain on the host filesystem until you choose command to delete 
+   them by using the docker rm command.
+   ***
+
+   - display list of docker containers
+   # docker ps -l
+(
+[root@node0 ~]# docker ps -l
+CONTAINER ID        IMAGE               COMMAND             CREATED             STATUS                     PORTS               NAMES
+e2a38755d070        centos              "uname -a"          7 minutes ago       Exited (0) 7 minutes ago                       xenodochial_spence
+
+)
+
+   - display running containers
+   # docker ps
+(
+[root@node0 ~]# docker ps
+CONTAINER ID        IMAGE               COMMAND             CREATED             STATUS              PORTS               NAMES
+)
+
+   - name a container
+   # docker run --name cosv centos uname -a             (cosv is the named name)
+(
+Linux 8f75cd75f6c6 3.10.0-862.11.6.el7.x86_64 #1 SMP Tue Aug 14 21:49:04 UTC 2018 x86_64 x86_64 x86_64 GNU/Linux
+)
+   - start a container using name
+   # docker start cosv
+
+   - run container in interactive mode
+   # docker run -it centos bash
+(
+[root@node0 ~]# docker run -it centos bash   (-i - interactive session, -t - allocate a tty and attaches stdin and stdout)
+[root@745e9b019ecf /]# ll
+total 12
+-rw-r--r--.   1 root root 12005 Aug  4 22:05 anaconda-post.log
+lrwxrwxrwx.   1 root root     7 Aug  4 22:04 bin -> usr/bin
+drwxr-xr-x.   5 root root   360 Aug 28 22:41 dev
+drwxr-xr-x.   1 root root    66 Aug 28 22:41 etc
+drwxr-xr-x.   2 root root     6 Apr 11 04:59 home
+lrwxrwxrwx.   1 root root     7 Aug  4 22:04 lib -> usr/lib
+lrwxrwxrwx.   1 root root     9 Aug  4 22:04 lib64 -> usr/lib64
+drwxr-xr-x.   2 root root     6 Apr 11 04:59 media
+drwxr-xr-x.   2 root root     6 Apr 11 04:59 mnt
+drwxr-xr-x.   2 root root     6 Apr 11 04:59 opt
+dr-xr-xr-x. 129 root root     0 Aug 28 22:41 proc
+dr-xr-x---.   2 root root   114 Aug  4 22:05 root
+drwxr-xr-x.   1 root root    21 Aug 28 22:41 run
+lrwxrwxrwx.   1 root root     8 Aug  4 22:04 sbin -> usr/sbin
+drwxr-xr-x.   2 root root     6 Apr 11 04:59 srv
+dr-xr-xr-x.  13 root root     0 Aug 28 20:42 sys
+drwxrwxrwt.   7 root root   132 Aug  4 22:05 tmp
+drwxr-xr-x.  13 root root   155 Aug  4 22:04 usr
+drwxr-xr-x.  18 root root   238 Aug  4 22:04 var
+[root@745e9b019ecf /]# exit
+exit
+[root@node0 ~]#
+)
+    - run interactive session
+[root@node0 ~]# docker run -it centos bash  (interactive session)
+[root@a23f4008be75 /]# ls   (in container)
+anaconda-post.log  bin  dev  etc  home  lib  lib64  media  mnt  opt  proc  root  run  sbin  srv  sys  tmp  usr  var
+    - enter ctl+p and ctl+q to quit the container console and get to host tty
+[root@a23f4008be75 /]# [root@node0 ~]# docker ps   ( in host console now)
+CONTAINER ID        IMAGE               COMMAND             CREATED             STATUS              PORTS               NAMES
+a23f4008be75        centos              "bash"              32 seconds ago      Up 31 seconds                           loving_mcnulty
+    - use attach command to return container consle 
+[root@node0 ~]# docker attach a23f4008be75   (in container now)
+[root@a23f4008be75 /]# uname
+Linux
+[root@a23f4008be75 /]#
+
+--- 
+    - display all containers (include exited)
+    # docker ps -a
+(
+[root@node0 ~]# docker ps -a
+CONTAINER ID        IMAGE               COMMAND             CREATED             STATUS                            PORTS               NAMES
+a23f4008be75        centos              "bash"              9 minutes ago       Exited (127) About a minute ago                       loving_mcnulty
+745e9b019ecf        centos              "bash"              12 minutes ago      Exited (0) 12 minutes ago                             distracted_cori
+8f75cd75f6c6        centos              "uname -a"          17 minutes ago      Exited (0) 16 minutes ago                             cosv
+e2a38755d070        centos              "uname -a"          34 minutes ago      Exited (0) 20 minutes ago                             xenodochial_spence
+96998b1b5392        hello-world         "/hello"            55 minutes ago      Exited (0) 55 minutes ago                             optimistic_swanson
+a480f3092d00        hello-world         "/hello"            55 minutes ago      Exited (0) 55 minutes ago                             nostalgic_sammet
+[root@node0 ~]#
+)
+
+   - expose container port to host
+   # docker run -it -p 81:80 ubuntu-nginx /bin/bash   (where -p - port setting, 81:80 - 81 is host port, 80 container port listen)
+
+---- install ctop to monitoring resource status of containers
+
+(
+[root@node0 ~]# yum install wget
+Loaded plugins: fastestmirror
+Loading mirror speeds from cached hostfile
+ * base: mirrors.aliyun.com
+ * extras: mirrors.aliyun.com
+ * updates: mirrors.aliyun.com
+Resolving Dependencies
+--> Running transaction check
+---> Package wget.x86_64 0:1.14-15.el7_4.1 will be installed
+--> Finished Dependency Resolution
+
+Dependencies Resolved
+
+===============================================================================================================================
+ Package                   Arch                        Version                                 Repository                 Size
+===============================================================================================================================
+Installing:
+ wget                      x86_64                      1.14-15.el7_4.1                         base                      547 k
+
+Transaction Summary
+===============================================================================================================================
+Install  1 Package
+
+Total download size: 547 k
+Installed size: 2.0 M
+Is this ok [y/d/N]: y
+Downloading packages:
+wget-1.14-15.el7_4.1.x86_64.rpm                                                                         | 547 kB  00:00:01
+Running transaction check
+Running transaction test
+Transaction test succeeded
+Running transaction
+  Installing : wget-1.14-15.el7_4.1.x86_64                                                                                 1/1
+warning: /etc/wgetrc created as /etc/wgetrc.rpmnew
+  Verifying  : wget-1.14-15.el7_4.1.x86_64                                                                                 1/1
+
+Installed:
+  wget.x86_64 0:1.14-15.el7_4.1
+
+Complete!
+[root@node0 ~]# wget https://github.com/bcicen/ctop/releases/download/v0.7.1/ctop-0.7.1-linux-amd64  -O /usr/local/bin/ctop
+--2018-08-29 07:06:54--  https://github.com/bcicen/ctop/releases/download/v0.7.1/ctop-0.7.1-linux-amd64
+Connecting to 10.0.0.9:30080... connected.
+Proxy request sent, awaiting response... 302 Found
+Location: https://github-production-release-asset-2e65be.s3.amazonaws.com/77419377/f77ea9c6-239d-11e8-8573-aa355288f0fe?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIAIWNJYAX4CSVEH53A%2F20180828%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20180828T230622Z&X-Amz-Expires=300&X-Amz-Signature=efd075ab25d07692acbdbb6676a6be4c1a944352da40b2889f3e6c1a52f5fa08&X-Amz-SignedHeaders=host&actor_id=0&response-content-disposition=attachment%3B%20filename%3Dctop-0.7.1-linux-amd64&response-content-type=application%2Foctet-stream [following]
+--2018-08-29 07:06:55--  https://github-production-release-asset-2e65be.s3.amazonaws.com/77419377/f77ea9c6-239d-11e8-8573-aa355288f0fe?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIAIWNJYAX4CSVEH53A%2F20180828%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20180828T230622Z&X-Amz-Expires=300&X-Amz-Signature=efd075ab25d07692acbdbb6676a6be4c1a944352da40b2889f3e6c1a52f5fa08&X-Amz-SignedHeaders=host&actor_id=0&response-content-disposition=attachment%3B%20filename%3Dctop-0.7.1-linux-amd64&response-content-type=application%2Foctet-stream
+Connecting to 10.0.0.9:30080... connected.
+Proxy request sent, awaiting response... 200 OK
+Length: 9740856 (9.3M) [application/octet-stream]
+Saving to: ¡®/usr/local/bin/ctop¡¯
+
+100%[=====================================================================================>] 9,740,856   2.16MB/s   in 6.3s
+
+2018-08-29 07:07:03 (1.47 MB/s) - ¡®/usr/local/bin/ctop¡¯ saved [9740856/9740856]
+
+[root@node0 ~]# chmod +x /usr/local/bin/ctop
+[root@node0 ~]# ctop
+[root@node0 ~]#
+)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

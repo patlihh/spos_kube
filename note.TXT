@@ -1,0 +1,395 @@
+check etcd cluster state
+
+[root@node1 ~]# etcdctl   --ca-file=/etc/etcd/ssl/etcd-ca.pem   --cert-file=/etc/etcd/ssl/etcd-client.pem   --key-file=/etc/etcd/ssl/etcd-client-key.pem   --endpoints=https://node1:2379,https://node2:2379,https://node3:2379   cluster-health
+
+
+一、安装Dashboard(参考url: https://blog.csdn.net/nklinsirui/article/details/80806131和https://blog.csdn.net/moxiaomomo/article/details/81905180?utm_source=blogxgwz1)
+1.下载镜像 
+
+下载：
+ansible nodes -m command -a "docker pull registry.cn-qingdao.aliyuncs.com/charleslee1120/kubernetes-dashboard-amd64:v1.8.3"
+改TAT
+ansible nodes -m command -a "docker tag registry.cn-qingdao.aliyuncs.com/charleslee1120/kubernetes-dashboard-amd64:v1.8.3 k8s.gcr.io/kubernetes-dashboard-amd64:v1.8.3"
+删除原来image
+ansible nodes -m command -a "docker rmi registry.cn-qingdao.aliyuncs.com/charleslee1120/kubernetes-dashboard-amd64:v1.8.3"
+
+
+2.部署Dashboard
+ kubectl apply  -f "https://raw.githubusercontent.com/kubernetes/dashboard/master/src/deploy/recommended/kubernetes-dashboard.yaml"
+ 
+3.访问Dashboard
+a. kubernetes-dashboard.yaml 的deploy和service的labels增加kubernetes.io/cluster-service: "true"
+b. kubectl cluster-info 查看访问Dashboard url
+
+
+二.node clone和扩展根分区大小，参考如下URL:
+https://www.cnblogs.com/Sungeek/p/9084510.html
+
+三.add node
+1.关闭机器防火墙
+systemctl stop firewalld.service
+systemctl disable firewalld.service
+
+2.机器关闭selinux，使容器能够访问到宿主机文件系统
+vim /etc/selinux/config
+将【SELINUX】设置为【disabled】: SELINUX=disabled
+临时关闭selinux: setenforce 0
+
+3.配置系统路由参数，防止kubeadm报路由警告
+cd /etc/sysctl.d/
+touch k8s.conf
+nano k8s.conf
+k8s.conf 内容如下：
+
+# ATTENTION: 
+# check if we need to add following setting to /usr/lib/sysctl.d/00-system.conf
+#
+
+# enanble netfilter on bridges
+net.bridge.bridge-nf-call-ip6tables = 1
+net.bridge.bridge-nf-call-iptables = 1
+
+# enable ip forward
+# use # sysctl -p                          - to exec
+# cat /proc/sys/net/ipv4/ip_forward        - to check (return "1" if setting effected) 
+net.ipv4.ip_forward = 1
+#net.ipv6.ip_forward = 1
+net.ipv4.conf.all.forwarding = 1
+#net.ipv6.conf.all.forwarding = 1
+
+net.ipv4.ip_nonlocal_bind = 1 # needed for haproxy to bind to the kube-api VIP
+
+# Disable IPv6
+#net.ipv6.conf.all.disable_ipv6 = 1
+#net.ipv6.conf.default.disable_ipv6 = 1
+#net.ipv6.conf.lo.disable_ipv6 = 1
+
+运行如下命令使配置生效
+sysctl --system
+
+4. 关闭虚拟内存
+nano /etc/fstab
+注释掉swap那一行
+然后通过命令临时关闭虚拟内存
+swapoff -a
+
+5. 拷贝 kube_bin_local 文件到/usr/local/bin目录，拷贝 flannel_bin_local 文件到/usr/local/bin目，并执行chmod -R 755 /usr/local/bin/*
+
+6. 拷贝 cni_bin_local 文件到 /opt/cni/bin目录，chmod -R 755 /opt/cni/bin/*,  
+
+7. 安装docker（参考url:https://www.cnblogs.com/yufeng218/p/8370670.html）
+使用 root 权限登录 Centos。确保 yum 包更新到最新
+yum update
+
+卸载旧版本(如果安装过旧版本的话)
+yum remove docker  docker-common docker-selinux docker-engine
+
+安装需要的软件包， yum-util 提供yum-config-manager功能，另外两个是devicemapper驱动依赖的
+yum install -y yum-utils device-mapper-persistent-data lvm2
+
+设置yum源
+yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+
+可以查看所有仓库中所有docker版本，并选择特定版本安装
+yum list docker-ce --showduplicates | sort -r
+
+安装docker, 如下命令选择一个执行安装即可
+yum install docker-ce  #由于repo中默认只开启stable仓库，故这里安装的是最新稳定版
+yum install <FQPN>  # 例如：sudo yum install docker-ce-17.12.0.ce
+
+启动并加入开机启动
+systemctl start docker
+systemctl enable docker
+
+验证安装是否成功(有client和service两部分表示docker安装启动都成功了)
+docker version
+
+8. flannel.service,kubelet.service,kube-proxy.service 拷贝到/etc/systemd/system/； 增加etc\kubernetes内容，修改node相关信息；增加etc\sysconfig内容; 增加\etc\cni\内容
+增加如下环境变量：
+export ETCDCTL_CA_FILE="/etc/etcd/ssl/etcd-ca.pem"
+export ETCDCTL_CERT_FILE="/etc/etcd/ssl/etcd-client.pem"
+export ETCDCTL_ENDPOINTS="https://192.168.20.101:2379,https://192.168.20.102:2379,https://192.168.20.103:2379"
+export ETCDCTL_KEY_FILE="/etc/etcd/ssl/etcd-client-key.pem"
+
+9. create kubelet and kube-proxy dir
+mkdir -p /var/lib/kube-proxy
+mkdir -p /var/lib/kubelet
+
+10. 查看根证书，保证根证书与master api的一致
+下面使用cfss生成CA证书和私钥（只运行一次，因为要保证根证书一致）：
+cfssl gencert -initca ca-csr.json | cfssljson -bare ca
+
+其中ca-csr.json 内容如下：
+{
+    "CN": "kubernetes",
+    "key": {
+        "algo": "rsa",
+        "size": 2048
+    },
+    "names": [
+        {
+            "C": "CN",
+            "L": "Shenzhen",
+            "ST": "Shenzhen",
+            "OU": "kube cluster",
+            "L": "internet",
+            "O": "kube"
+        }
+    ]
+}
+
+11. 用master的根证书生产kubelet证书和私钥，证书和私钥要通过base64编码放入kubelet.conf的client-certificate-data和client-key-data。
+再生产每个node的访问证书（一定要保证根证书一致，与master的一致！！！（根证书每次生产都是不一样的）），命令如下；
+cfssl gencert -ca=ca.pem -ca-key=ca-key.pem -config=ca-config.json -profile=kube kubelet.json | cfssljson -bare kubelet
+
+
+The kubeconfig file should look like:
+apiVersion: v1
+kind: Config
+users:
+- name: kubelet
+  user:
+    client-certificate-data: <base64-encoded-cert>
+    client-key-data: <base64-encoded-key>
+clusters:
+- name: local
+  cluster:
+    certificate-authority-data: <base64-encoded-ca-cert>
+contexts:
+- context:
+    cluster: local
+    user: kubelet
+  name: service-account-context
+current-context: service-account-context
+
+
+To generate the base64 encoded client cert, you should be able to run something like:
+cat kubelet.pem | base64 >> kubelet.log
+cat kubelet-key.pem | base64 >> kubelet-key.log
+
+把kubelet.log的内容放到kubelet.conf的client-certificate-data: 后面；
+把kubelet-key.log的内容放到kubelet.confi的client-key-data: 后面；
+
+12. kubelet.service里要把 --anonymous-auth=false去掉
+否则出现这些错误
+the server has asked for the client to provide credentials ( pods/log*********
+
+[root@node7 ~]# kubectl logs spos-auth-7cd699d77b-h5tf2
+error: You must be logged in to the server (the server has asked for the client to provide credentials ( pods/log spos-auth-7cd699d77b-h5tf2))
+
+
+四. 从 master 节点拷贝了 /root/.kube/config 到各work node。config 为 kubenertes的环境配置文件（包括内置kube-admin证书等），因此现在在各节点均可以运行 kubectl cli
+
+
+五. 生产kube,etcd,kubelet, kube-proxy的用户和组。
+
+六. Centos7配置ntp时间服务器(参考url:https://blog.csdn.net/zzy5066/article/details/79036674)
+1. 配置同步服务器为master
+
+七. centos7.5 master/slave mysql install and setup
+
+1. mysql-master(192.168.20.107) and mysql-slave(192.168.20.108) install mysql（参考URL:https://www.jianshu.com/p/a6c5ec995660）  
+
+a.检查是否已经安装MySQL
+ rpm -qa | grep mysql
+
+b.下载MySQL源安装包
+ wget http://dev.mysql.com/get/mysql57-community-release-el7-8.noarch.rpm
+
+c.安装MySQL源
+ yum localinstall mysql57-community-release-el7-8.noarch.rpm
+ 
+d.检查MySQL源是否安装成功
+ yum repolist enabled | grep "mysql.*-community.*"
+ 
+e.安装MySQL
+ yum install mysql-community-server
+ 
+f.设置开机启动并启动MySQL服务
+ systemctl daemon-reload && systemctl enable mysqld && systemctl start mysqld
+ 
+g.获取MySQL默认密码
+ grep 'temporary password' /var/log/mysqld.log
+ 
+h.修改密码（需包含大小写英文、数字、特殊字符且大于8位）
+ mysql -u root -p默认密码
+ set password for 'root'@'localhost'=password('新密码');   //我们的设置密码是Unitone@2018
+ 
+i.配置默认编码utf8,文件/etc/my.cnf中[mysqld]下加入
+character_set_server=utf8
+init_connect='SET NAMES utf8'
+
+2. 主设置
+a. 文件/etc/my.cnf中[mysqld]下添加配置
+server_id = 1
+log_bin=master_bin
+log_slave_updates=true
+
+b. 重启MySQL
+# service mysqld restart
+
+c. 创建同步账号
+# mysql -u root -p
+# create user 'repl'@'%' identified by 'Unitone@2018';
+
+d. 赋予同步账号远程权限
+# grant replication slave on *.* to 'repl'@'%' identified by 'Unitone@2018';
+# flush privileges;
+
+3. 从设置
+a.文件/etc/my.cnf中[mysqld]下添加配置
+server_id = 2
+relay_log=relay-log-bin
+relay_log_index=slave-relay-bin.index
+
+b.重启MySQL
+# service mysqld restart
+
+c. 使用主库授权的机器和同步账号（主机ip是192.168.20.107，同步账号是repl)
+mysql>change master to master_host='192.168.20.107',master_user='repl',master_password='Unitone@2018';  (可能要master_log_file和master_log_pos)
+mysql>flush privileges;
+
+d. mysql> start slave;
+
+e. show slave status\G
+要保证Slave_IO_Running: Yes 和Slave_SQL_Running: Yes
+Slave_IO_Running负责与主机的io通信，Slave_SQL_Running负责自己的slave mysql进程。
+
+如果Slave_IO_Running: Yes 和Slave_SQL_Running: Yes 则同步成功了！
+
+ 
+f. 增加主机或账号的权限语句：
+mysql>GRANT ALL PRIVILEGES ON *.* TO 'root'@'192.168.20.%' IDENTIFIED BY 'Unitone@2018' WITH GRANT OPTION;
+ 
+mysql>GRANT select,insert,update,create ON *.* TO 'root'@'192.168.20.%' IDENTIFIED BY 'Unitone@2018' WITH GRANT OPTION;
+
+如果mysql服务器也运行POD的话，要把docker0和cni0的ip网段也加入权限，否则POD起不来。
+
+
+八、ambassador 的API 访问接口
+1. httpbin的访问
+https://192.168.20.101:6443/api/v1/namespaces/default/services/ambassador/proxy/httpbin/
+
+2. spos-auth部署和访问
+
+a. account register:
+https://192.168.20.101:6443/api/v1/namespaces/default/services/ambassador/proxy/register?name=uni001&password=1234567&phone=13631566912&mail=7086959@qq.com
+
+b. account confirm: login mail to confirm, aka:
+"uni013, Please click the following URLs within 24 hours to activate, Thank you.
+https://192.168.20.101:6443/api/v1/namespaces/default/services/ambassador/proxy/registered?Activate=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyaWQiOiJVMTU0MjA5Nzc5OCIsImV4cCI6MTU0MjE4NDE5OCwiaWF0IjoxNTQyMDk3Nzk4fQ.aFfk9uO4LQYBIxTJuuZkLYF4y0bzMHkolZyrgO3JHs4
+
+3. spos-lang部署和访问
+a. google api访问需要证书（账号登后已经输出json文件)，需要定义GOOGLE_APPLICATION_CREDENTIALS环境变量，如：
+GOOGLE_APPLICATION_CREDENTIALS="/usr/lhh/gopath/go/credential.json"
+
+在Pod里设置环境变量有两种方式，一种在yaml文件定义，一种在Dockfile文件设置。
+
+还要DOCKEER包括GCP的SDK，参考URL https://github.com/GoogleCloudPlatform/cloud-sdk-docker, 我们使用google/cloud-sdk:alpine最小基础镜像即可。
+
+b. upstream timeout的解决，在yaml文件要加上timeout_ms,具体如下：
+
+  annotations:
+    getambassador.io/config: |
+      ---
+      apiVersion: ambassador/v0
+      kind: Mapping
+      name: spos_mapping
+      grpc: true
+      prefix: /spos.Lang/
+      rewrite: /spos.Lang/
+      service: spos-lang
+      timeout_ms: 20000
+
+4. ambassador service 访问加于TLS上，要加入如下语句：
+
+    kubectl create secret tls ambassador-certs --cert=gubstech.crt --key=gubstech.key
+和
+      ---
+      apiVersion: ambassador/v0
+      kind:  Module
+      name:  tls
+      config:
+        server:
+          enabled: True
+          
+  整个ambassador-https.yaml文件内容如下：
+  
+  ---
+apiVersion: v1
+kind: Service
+metadata:
+  creationTimestamp: null
+  labels:
+    service: ambassador
+  name: ambassador
+
+  annotations:
+    getambassador.io/config: |
+      ---
+      apiVersion: ambassador/v0
+      kind:  Module
+      name:  tls
+      config:
+        server:
+          enabled: True
+          redirect_cleartext_from: 80
+          alpn_protocols: h2
+        client:
+          enabled: False
+        upstream:
+          cert_chain_file: /etc/ssl/certs/gubstech.crt
+          private_key_file: /etc/ssl/certs/gubstech.key
+          alpn_protocols: h2
+
+#      ---
+#      apiVersion: ambassador/v0
+#      kind: RateLimitService
+#      name: ratelimit
+#      service: rate-limit:5000
+spec:
+  type: NodePort
+  ports:
+  - name: ambassador
+    port: 443
+    targetPort: https
+    nodePort: 32001
+
+  selector:
+    service: ambassador
+    
+    
+ 访问httpbin要加上https了，如这样https://192.168.99.100:32001/httpbin/
+ 
+ 还有要注意加上ALPN的支持！！！！（alpn_protocols: h2）,参考URL  https://github.com/datawire/ambassador/blob/master/docs/user-guide/grpc.md
+ 
+ 
+ 5. 所有功能要经过token 验证：
+ 
+ spos_auth模块对所有经过ambassador的接口进行token判断，有效的才能让ambassador放行，无效的仿效ambassador就拦截掉。 具体参考spos_auth的JwtTokenAuth函数,里面有对哪些功能接口要token验证的。token获取的要用户先登录成功，就会返回token.
+ 
+ docker run -e ADDRESS=192.168.99.100:30372 -e SPOS_AUTH=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyaWQiOiJVMTU0MjE3NjkyNiIsImV4cCI6MTU0MjE4ODkxNSwiaWF0IjoxNTQyMTg1MzE1fQ.7Kms1_lJ2X__fy1wCtYH3O8Hz7zG8OczEziu2VuxXYk greeter-client:v1
+ 
+（客户端已TLS接口ambassador服务，所有功能接口都要通过用户和权限管理spos_auth模块（权限管理包括token和授权），需要token的接口就要带token, 还有用户要授权是否有此功能接口）。
+
+
+::. getsockopt: no route to host的解决办法首先执行关闭防火墙，具体如下：
+systemctl disable firewalld
+systemctl reboot
+
+::. W1031 12:52:04.447022       1 server.go:64] Error getting metrics from dnsmasq: read udp 127.0.0.1:43093->127.0.0.1:53: read: connection refused 问题解决如下：
+kubelet:
+--anonymous-auth=true
+/etc/systemd/system/kubelet.service 里要加上--anonymous-auth=true
+
+
+
+https://192.168.20.101:6443/api/v1/namespaces/default/services/ambassador:32001/proxy/
+
+https://192.168.20.101:6443/api/v1/namespaces/kube-system/services/https:kubernetes-dashboard:/proxy/#!/service?namespace=default
+
+kubectl attach curl-87b54756-s5j6g -c curl -i -t
+
+
+
+

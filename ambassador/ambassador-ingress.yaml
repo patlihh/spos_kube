@@ -1,0 +1,13 @@
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: ambassador-ingress
+spec:
+  rules:
+  - host: us.unitone.cn:32001
+    http:
+      paths:
+      - backend:
+          serviceName: ambassador
+          servicePort: 80
+  

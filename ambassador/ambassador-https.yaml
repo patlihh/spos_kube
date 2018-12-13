@@ -1,0 +1,42 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  creationTimestamp: null
+  labels:
+    service: ambassador
+  name: ambassador
+
+  annotations:
+    getambassador.io/config: |
+      ---
+      apiVersion: ambassador/v0
+      kind:  Module
+      name:  tls
+      config:
+        server:
+          enabled: True
+          redirect_cleartext_from: 80
+          alpn_protocols: h2
+        client:
+          enabled: False
+        upstream:
+          cert_chain_file: /etc/ssl/certs/gubstech.crt
+          private_key_file: /etc/ssl/certs/gubstech.key
+          alpn_protocols: h2
+
+#      ---
+#      apiVersion: ambassador/v0
+#      kind: RateLimitService
+#      name: ratelimit
+#      service: rate-limit:5000
+spec:
+  type: NodePort
+  ports:
+  - name: ambassador
+    port: 443
+    targetPort: https
+    nodePort: 32001
+
+  selector:
+    service: ambassador

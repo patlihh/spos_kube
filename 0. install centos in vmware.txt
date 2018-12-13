@@ -1,0 +1,361 @@
+centos 7 in vmware
+
+--
+vmware setting
+- user vmware ws pro (12 - 14)
+- centos 7.x
+- 2GB/20GB 2x cpu for node0, 1GB/20GB 2x cpu for node1 and node2
+- CPU virtualization: virutualization engin - virtual intel vt-x/ept or amd-v/rvi(v)
+  virtual cpu performance counter, virtual iommu(io mem management unit)
+- sync host clock to vm
+- auto update vmware tools
+- use shared data directory
+- set vmware NAT port forwarding (10010/10011/10012 -> node0 vm :22/ nod1 vm :22/ node2 vm :22)
+
+-- 
+vm settings
+- 3 vm nodes: 
+  node0 - 192.168.112.100
+  node1 - 192.168.112.101
+  node2 - 192.168.112.102
+- os: centos 7.x, minimum configuration
+- os setting in vm installation:
+  . use minimal install for server
+  . change timezone to Asia/Shanghai, set correct date and time
+  . use auto disk partition
+  . set root password: cobaenter
+  . create user: name - coba, password -  s.....
+
+  > install all 3 vm nodes (node0, node1, node2)
+
+  - press reboot button when finished os installation
+  press Reboot.
+
+------------------------------
+
+0. REM: enable /etc/rc.local auto start script on boot
+
+  as system change, /etc/rc.local is not executed on boot. to enable /etc/rc.local execute on boot,
+  we need to # chmod +x /etc/rc.d/rc.local  (where,  /etc/rc.local -> rc.d/rc.local)
+    # chmod +x /etc/rc.d/rc.local
+
+    - then add script in rc.local to get exec script on boot.
+
+------------------------------
+1. system status
+
+   - display os info
+   # uname -a
+     Linux node0 3.10.0-862.11.6.el7.x86_64 #1 SMP Tue Aug 14 21:49:04 UTC 2018 x86_64 x86_64 x86_64 GNU/Linux
+
+   - display disk space info
+   # df -h
+   (
+   [root@localhost ~]# df -h
+   Filesystem               Size  Used Avail Use% Mounted on
+   /dev/mapper/centos-root   17G  1.1G   16G   7% /
+   devtmpfs                 1.4G     0  1.4G   0% /dev
+   tmpfs                    1.4G     0  1.4G   0% /dev/shm
+   tmpfs                    1.4G  9.5M  1.4G   1% /run
+   tmpfs                    1.4G     0  1.4G   0% /sys/fs/cgroup
+   /dev/sda1               1014M  142M  873M  14% /boot
+   tmpfs                    283M     0  283M   0% /run/user/1000
+   tmpfs                    283M     0  283M   0% /run/user/0
+   )
+   
+   - display memory info
+   # free -m
+   (
+   [root@localhost ~]# free -m
+                 total        used        free      shared  buff/cache   available
+   Mem:           2829         150        2327           9         351        2486
+   Swap:          2047           0        2047
+   )
+
+   - check service management type: systemd (use systemctl op name / service name op ) or init type (sys v5)
+   # ps -P 1
+     PID PSR TTY      STAT   TIME COMMAND
+       1   0 ?        Ss     0:01 /usr/lib/systemd/systemd --switched-root --system --deserialize 22
+
+     (rem: our system is using systemd to manage services. "# systemctl operation service_name")
+
+   - add user coba to sudo group
+   # usermod -aG wheel coba
+
+----- network settings
+
+2. setup networking
+   > reboot into system using normal user coba
+
+   $ su -
+     enter root password
+   #
+
+   -- ²éÕÒ interface (or use # ip addr to check interface name)
+   # cd /etc/sysconfig/network-scripts/    (network configuration directory)
+   # ls 
+     .... ifcfg-ens33  ( eth interface - $ ens33)
+     .... ifcfg-l0     ( loopback interface)
+     (
+     [root@localhost ~]# ls /etc/sysconfig/network-scripts
+     ¡ñ ifcfg-ens33  ifdown-ippp  ifdown-routes    ifup          ifup-ipv6   ifup-ppp       ifup-tunnel
+     ifcfg-lo     ifdown-ipv6  ifdown-sit       ifup-aliases  ifup-isdn   ifup-routes    ifup-wireless
+     ifdown       ifdown-isdn  ifdown-Team      ifup-bnep     ifup-plip   ifup-sit       init.ipv6-global
+     ifdown-bnep  ifdown-post  ifdown-TeamPort  ifup-eth      ifup-plusb  ifup-Team      network-functions
+     ifdown-eth   ifdown-ppp   ifdown-tunnel    ifup-ippp     ifup-post   ifup-TeamPort  network-functions-ipv6
+     )
+
+   - change ifcfg-ens33 to : 1. user static ip, start net interface at startup, 
+   -   gateway, dns, etc.
+   # vi /etc/sysconfig/network-scripts/ifcfg-ens33    (need to use vi, as no other editors)
+   ( ref: ustation68 machine use 192.168.112.xx vm sub network, 
+          vmware host ip is 192.168.20.221, 
+          vmware gateway is 192.168.112.2,
+          lan dns is 192.168.10.11
+   )
+   -- changes with # comment
+   TYPE=Ethernet
+   PROXY_METHOD=none
+   BROWSER_ONLY=no
+   BOOTPROTO=static   # using static ip
+   DEFROUTE=yes
+   IPV4_FAILURE_FATAL=no
+   IPV6INIT=yes       
+   IPV6_AUTOCONF=yes
+   IPV6_DEFROUTE=yes
+   IPV6_FAILURE_FATAL=no
+   IPV6_ADDR_GEN_MODE=stable-privacy
+   NAME=ens33         # check interface name
+   UUID=342c88bc-e0cb-486c-90b8-7edcf0c8b53e
+   DEVICE=ens33       # check interface
+   ONBOOT=yes         # start network interface on boot
+   IPADDR=192.168.126.100    # ip address
+   PREFIX=24
+   GATEWAY=192.168.126.2     # use vmware gateway setting
+   DNS1=10.0.0.1            # primary dns
+   DNS2=223.5.5.5           # secondary dns
+   IPV6_PRIVACY=no
+   --
+   :wq!              #±£´æÍË³ö
+
+
+   - change hostname
+   # nano /etc/hostname
+   -- change localhost.localdoman -> node0
+
+   - restart network (if need, restart vmware network in vmware network editor)
+   # service network restart
+
+   - test network interface state, ip address and other network info
+   # ip addr
+
+   (
+   # ip addr
+   1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN group default qlen 1000
+       link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00
+       inet 127.0.0.1/8 scope host lo
+          valid_lft forever preferred_lft forever
+       inet6 ::1/128 scope host
+          valid_lft forever preferred_lft forever
+   2: ens33: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc pfifo_fast state UP group            default    qlen 1000
+       link/ether 00:0c:29:43:8f:10 brd ff:ff:ff:ff:ff:ff
+       inet 192.168.70.100/24 brd 192.168.70.255 scope global noprefixroute ens33
+          valid_lft forever preferred_lft forever
+       inet6 fe80::5ec6:2b72:3570:c8e/64 scope link
+          valid_lft forever preferred_lft forever
+   )
+
+   - ping www.bing.com to check network/gateway/dns works
+   # ping www.bing.com
+
+   (
+   [root@localhost ~]# ping www.bing.com
+   PING cn-0001.cn-msedge.net (202.89.233.100) 56(84) bytes of data.
+   64 bytes from 202.89.233.100 (202.89.233.100): icmp_seq=1 ttl=128 time=44.1 ms
+   64 bytes from 202.89.233.100 (202.89.233.100): icmp_seq=2 ttl=128 time=40.8 ms
+   64 bytes from 202.89.233.100 (202.89.233.100): icmp_seq=3 ttl=128 time=43.6 ms
+   ^C
+   --- cn-0001.cn-msedge.net ping statistics ---
+   3 packets transmitted, 3 received, 0% packet loss, time 2022ms
+   rtt min/avg/max/mdev = 40.864/42.892/44.173/1.450 ms
+   )
+
+----------------
+
++  check and set vmware NAT port forwarding. we can now use ssh to access vm nodes.  
+
+   login vm node, use "$ hostname" to check each node.
+
+-----------------
++  update centos  (will take some time)
+   # yum update
+-----------------
+
+3. install utilities
+   # yum install -y nano git curl wget net-tools tcpdump
+     
+4. change timezone and correct date/time (if vm installation has select correct time zone, it is
+   not needed to change timezone)
+   # tzselect  (to setup timezone)
+   
+   then change hwclock and sync hwclock
+   (
+   [root@localhost ~]# hwclock --set --date="2018-08-28 04:47:00"
+   [root@localhost ~]# hwclock -s
+   [root@localhost ~]# date
+   Tue Aug 28 04:47:09 CST 2018
+   )
+
+5. install nix package management tool (not yet used now.)
+   
+   - install bzip2 (nix need bzcat which included in bzip2)
+   # yum install bzip2
+   
+   - enter normal user to install nix (normal user need be a sudo user (group wheel))
+   $ curl https://nixos.org/nix/install | sh
+   (
+   [coba@localhost ~]$ curl https://nixos.org/nix/install | sh
+     % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                    Dload  Upload   Total   Spent    Left  Speed
+   100  2472  100  2472    0     0   2427      0  0:00:01  0:00:01 --:--:--  2430
+   downloading Nix 2.0.4 binary tarball for x86_64-linux from    'https://nixos.org/releases/nix/nix-2.0.4/nix-2.0.4-x86_64-linux.tar.bz2' to '/tmp/nix-   binary-tarball-unpack.twordHM4sj'...
+     % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                    Dload  Upload   Total   Spent    Left  Speed
+   100 21.0M  100 21.0M    0     0   185k      0  0:01:55  0:01:55 --:--:--  230k
+   performing a single-user installation of Nix...
+   directory /nix does not exist; creating it by running 'mkdir -m 0755 /nix && chown coba    /nix'    using sudo
+   [sudo] password for coba:
+   copying Nix to /nix/store...............................
+   initialising Nix database...
+   Nix: creating /home/coba/.nix-profile
+   installing 'nix-2.0.4'
+   building '/nix/store/9v9rz64kdblx991qw8q7472yhisz0rs2-user-environment.drv'...
+   created 6 symlinks in user environment
+   unpacking channels...
+   created 2 symlinks in user environment
+   modifying /home/coba/.bash_profile...
+
+   Installation finished!  To ensure that the necessary environment
+   variables are set, either log in again, or type
+
+     . /home/coba/.nix-profile/etc/profile.d/nix.sh
+
+   in your shell.
+   [coba@localhost ~]$ 
+   [coba@localhost ~]$ . /home/coba/.nix-profile/etc/profile.d/nix.sh
+   [coba@localhost ~]$
+                     $ nix-env -q
+                       nix-2.0.4
+   )
+
+     ref: for multi-user nix, see: https://nixos.org/nix/manual/#ssec-multi-user
+
+
+
+   # shutdown -r now    (# reboot)
+
+-------------------
+   ref: ustation68 vmware host machine use 192.168.20.221:30080 as http/https proxy
+
+
+6. config proxy for yum
+   # nano /etc/yum.conf
+--- add 
+# add proxy setting for yum
+proxy=http://10.0.0.9:30080
+#proxy_user=
+#proxy_password=
+---
+
+7. config and export proxy for other tools (e.g. curl)
+
+   ref: ustation68 vmware host machine use 192.168.20.221:30080 as http/https proxy
+
+   - enable /etc/rc.local call on boot
+   # chmod +x /etc/rc.d/rc.local
+
+   - add wget proxy
+   # nano /etc/wgetrc
+-- add
+# proxy for wget
+http_proxy=http://10.0.0.9:30080
+https_proxy=http://10.0.0.9:30080
+ftp_proxy=http://10.0.0.9:30080
+--
+
+   (also uncomment "use_proxy = on" when needed)
+
+   - set git proxy
+   ref: ustation68 vmware host machine use 192.168.20.221:30080 as http/https proxy
+
+   (
+   $ git config --global http.proxy http://10.0.0.9:30080
+   $ git config --global https.proxy http://10.0.0.9:30080
+   )
+
+   - add global proxy and export
+   # nano /etc/profile
+-- add
+http_proxy="http://10.0.0.9:30080"
+https_proxy="http://10.0.0.9:30080"
+export http_proxy
+export https_proxy
+---
+
+   rem: enable proxy server (e.g., shadowsocks client) to allow external access if needed.
+
+8. reboot and to enable proxy settings; check proxy
+   # reboot
+
+   $ yum clean & yum search dovecot
+   $ yum search firefox
+
+   $ curl https://www.google.com
+
+9. set up /etc/hosts file (for all nodes)
+   
+   - check host name
+   # uname -n
+     ( node0 )
+
+   # nano /etc/hosts
+   (ref: ustation68 machine use 192.168.112.x subnet for vms)
+--- add
+192.168.126.100 node0 node0.local
+192.168.126.101 node1 node1.local
+192.168.126.102 node2 node2.local
+
+10. 
+
+. END basic enviroment setting
+
+
+-> continue .install docker
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

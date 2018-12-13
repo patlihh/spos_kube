@@ -1,0 +1,25 @@
+
+注意：
+
+0. git pull 回去
+
+1. 我这边环境的 ip 为 10.0.0.101 - 106
+
+   注意将pull 回去的目录 sites_vars 中的涉及IP地址的内容覆盖 inventories/dev/host_vars 目录中内容；
+   
+   注意修改 invtories/dev/hosts 内容与你的IP地址对应
+
+2. 在 ansible 站点 使用如下重启动
+   # ansible cluster -m command -a "reboot"
+
+3. anasible 站点的工作目录中使用如下进行布置
+   # ansible-playbook -i inventories/dev/hosts dep-kube.yml
+
+   (布置约 7-12 分钟)
+
+4. 部署完毕使用如下重新启动全部节点，避免机器使用原 cert 文件造成一段时间内通讯认证不能正常进行
+   # ansible cluster -m command -a "reboot"
+
+5. 重启动后因可正常看到 几个 node已可工作。
+
+   （flannel 可能可以工作， 未进行验证。 kube-dns 未进行布置。节点正常应该可以布置kube-dns 或 nginx等）

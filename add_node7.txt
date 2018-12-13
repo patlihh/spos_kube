@@ -1,0 +1,46 @@
+问题找到： 主要是生成的kubelet.pem 和 kubelet-key.pem 证书错误。
+
+已经在 node0 
+/root/prj/kube..../tmp/kubelet_cert_backup/node71  和 node81中生成了用于node7 node8的kubelet.pem kubelet-key.pem
+
+试验中仅将 nod71中的证书布置到了node7， node8未布置
+
+步骤 1：
+(
+方法：
+在 node0 节点
+1. 从tmp 目录中将 master-ca-cert-backup 目录中的全部内容拷贝到了node71目录中
+
+将使用其中的 ca.pem, .config, .csr -key.pem 等以及 两个证书生成二进制
+
+2. 使用 node71 目录 gen-cert.txt 中的命令生成 kubelet.pem 和 kubelet-key.pem
+
+3. 将生成的两个 .pem 以及集群 主 ca.pem (item 1 中已拷贝过来) 三个文件scp到 node7:/etc/kubernetes/pki 目录中
+)
+
+步骤2：
+（
+在 node7 节点中
+1. 进入 /etc/kubernetes 目录中
+2. 删除原来建立的kubelet.conf文件 （此文件被 /etc/systemd/system/kubelet.service 引用作为 kubelet服务的配置文件）
+3. 参见 此目录中的 gen.txt 执行其中的4条命令，分别建立 cluster信息，包括导入ca.pem, 建立和导入 kubelet.pem kubelet-key.pem, 上下文信息，默认上下文信息等。这些信息导入生成 kubelet.conf文件。
+（注： 已经在各 work node中设置了kubernetes环境配置文件，现在在各节点均可执行 kubectl cli）
+4. # systemctl restart kubelet 重启动 kubelet服务
+5. # systemctl status -l kubelet 和 # journalctl -u kubelet 以及 # kubectl get nodes 可看到 kubelet服务已可工作，node7 已经在 apiserver中完成注册。
+
+
+
+备注：
+
+1. 已经将 node6中的 /usr/lib/systemd/system/docker.service考虑到 node7, node8
+
+2. 参照 node6 修改了 node7, node8的 /etc/systemd/system/kubelet.service
+   (好像还将 7，8 中的 允许匿名认证设置成了false)
+
+3. 修改了 /etc/kubernetes .. pki 以及 /etc/etcd , ...docker目录及其内部文件的owner/group属性。 （一般不影响使用，由于group分组及与root的关系）
+
+4. 从 master 节点拷贝了 /root/.kube/config 到各work node。config 为 kubenertes的环境配置文件（包括内置kube-admin证书等），因此现在在各节点均可以运行 kubectl cli
+
+
+）
+

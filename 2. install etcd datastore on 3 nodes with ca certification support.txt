@@ -1,0 +1,519 @@
+
+Installation of etcd datastore cluster (3 nodes) with TLS CA certification support
+
+------------------------------------------------------------------------------------------------
+
+Contents of Deployment:
+
+. etcd datastore: etcd cluster
+. number of nodes in cluster: 3 nodes
+. cluster bootstrap: static
+. host name, node ip address, etcd_node name:
+     host_name - ip address,      etcd_node_name
+     ------------------------------------
+     node0 -     192.168.112.100, node0
+     node1 -     192.168.112.101, node1
+     node2 -     192.168.112.102, node2
+. ntp server (1 local ntp master server, 2 ntp client)
+
+--------------------------------------------------------------------------------------------------
+
+0. Firewall setting
+   Centos firewall is enabled by defaut. For security reason, we will not close the firewall.
+   
+   - for etcd server, port 2379 and 2380 is used, we need to enable traffic on port 2370 and 2380.
+   - also use --permanent parameter to make rule still active after reboot
+   # firewall-cmd --zone=public --add-port=2379/tcp --permanent
+   # firewall-cmd --zone=public --add-port=2380/tcp --permanent
+   - add 4001 port enable (etcd cmd line seems access using 4001 port sometimes)
+   # firewall-cmd --zone=public --add-port=4001/tcp --permanent 
+
+   - reload firewall to take effect
+   # firewall-cmd --reload
+
+--------------------------------------------------------------------------------------------------
+
+1. install golang (for node0 only - it is used to build tools for creating cert files)
+   
+   - install golang to get ca related tools
+   $ sudo yum install go
+   
+   - check golang env
+   $ go env
+(
+[coba@node0 ~]$ go env
+GOARCH="amd64"
+GOBIN=""
+GOEXE=""
+GOHOSTARCH="amd64"
+GOHOSTOS="linux"
+GOOS="linux"
+GOPATH="/home/coba/go"
+GORACE=""
+GOROOT="/usr/lib/golang"
+GOTOOLDIR="/usr/lib/golang/pkg/tool/linux_amd64"
+GCCGO="gccgo"
+CC="gcc"
+GOGCCFLAGS="-fPIC -m64 -pthread -fmessage-length=0 -fdebug-prefix-map=/tmp/go-build395061330=/tmp/go-build -gno-record-gcc-switches"
+CXX="g++"
+CGO_ENABLED="1"
+CGO_CFLAGS="-g -O2"
+CGO_CPPFLAGS=""
+CGO_CXXFLAGS="-g -O2"
+CGO_FFLAGS="-g -O2"
+CGO_LDFLAGS="-g -O2"
+PKG_CONFIG="pkg-config"
+[coba@node0 ~]$
+)
+
+   - set and export gopath
+   $ nano .bash_profile
+--- check and add
+PATH=$PATH:$HOME/.local/bin:$HOME/bin
+
+# add following 3 lines
+GOPATH="/home/coba/go"
+PATH=$PATH:$GOPATH/bin
+export GOPATH
+export PATH
+---
+    or temporarely exec in cmd line
+    $ GOPATH="/home/coba/go"
+    $ PATH=$PATH:$GOPATH
+    $ export GOPATH
+    $ export PATH
+
+--------------------------------------------------------------------------------------------------
+
+2. Get and build cfssl CA cert tools using "go get"
+
+    - go get to get and install tools: cfssl, cfssjosn, mkbundle
+    $ go get -u github.com/cloudflare/cfssl/cmd/...
+    (above command will get and build cfssl tools, exec files are stored in /home/coba/go/bin directory)
+    $ ls /home/coba/go/bin
+    (cfssl  cfssl-bundle  cfssl-certinfo  cfssljson  cfssl-newkey  cfssl-scan  mkbundle  multirootca)
+ 
+--------------------------------------------------------------------------------------------------
+
+3. Create CA config
+
+   $ mkdir /home/coba/cfg
+   $ nano /home/coba/cfg/ca-config.json
+(
+{
+  "signing": {
+    "default": {
+      "expiry": "87600h"
+    },
+    "profiles": {
+      "uts": {
+	"usages": [
+            "signing",
+            "key encipherment",
+            "server auth",
+            "client auth"
+        ],
+	"expiry": "87600h"
+      }
+    }
+  }
+}
+)
+   ref: 
+   uts profile: ( uts - unitone technology system)
+     - expiry - 97600h = 10 years
+     - signing - ca certification can be used to sign other cert, CA=true in ca.pem
+     - server auth - TLS server authentication
+     - client auth - TLS client authentication
+
+--------------------------------------------------------------------------------------------------
+
+4. create CA cert signing request file
+
+   $ nano /home/coba/cfg/ca-csr.json
+(
+{
+  "CN": "uts",
+  "key": {
+    "algo": "rsa",
+    "size": 2048
+  },
+  "names": [
+    {
+      "C": "CN",
+      "ST": "Shenzhen",
+      "L": "Shenzhen",
+      "O": "UnitoneTech",
+      "OU": "DEV"
+    }
+  ]
+}
+)
+
+   - check files we created
+   $ ls -l
+(
+[coba@node0 cfg]$ ll
+total 8
+-rw-rw-r--. 1 coba coba 285 Sep  1 03:31 ca-config.json
+-rw-rw-r--. 1 coba coba 208 Sep  1 03:39 ca-csr.json
+[coba@node0 cfg]$
+)
+
+--------------------------------------------------------------------------------------------------
+
+5. Generate CA certification and private key
+
+  $ cfssl gencert -initca ca-csr.json | cfssljson -bare ca
+(
+[coba@node0 cfg]$ cfssl gencert -initca ca-csr.json | cfssljson -bare ca
+2018/09/01 03:41:44 [INFO] generating a new CA key and certificate from CSR
+2018/09/01 03:41:44 [INFO] generate received request
+2018/09/01 03:41:44 [INFO] received CSR
+2018/09/01 03:41:44 [INFO] generating key: rsa-2048
+2018/09/01 03:41:45 [INFO] encoded CSR
+2018/09/01 03:41:45 [INFO] signed certificate with serial number 493828794318224304210156574868752825916461010821
+[coba@node0 cfg]$
+)
+
+   - list created files
+   $ ls -l
+(
+[coba@node0 cfg]$ ls -l
+total 20
+-rw-rw-r--. 1 coba coba  285 Sep  1 03:31 ca-config.json
+-rw-r--r--. 1 coba coba 1001 Sep  1 03:41 ca.csr
+-rw-rw-r--. 1 coba coba  208 Sep  1 03:39 ca-csr.json
+-rw-------. 1 coba coba 1675 Sep  1 03:41 ca-key.pem
+-rw-rw-r--. 1 coba coba 1310 Sep  1 03:41 ca.pem
+[coba@node0 cfg]$
+) 
+   ref: created files are : ca.csr, ca-key.pem, ca.pem
+    (to store ca-key.pem and ca.pem in a safe place)
+
+--------------------------------------------------------------------------------------------------
+
+6. Create etcd csr config file
+
+   $ nano /home/coba/cfg/etcd-csr.json
+(
+{
+    "CN": "uts",
+    "hosts": [
+      "127.0.0.1",
+      "192.168.112.100",
+      "192.168.112.101",
+      "192.168.112.102",
+      "node0",
+      "node1",
+      "node2"
+    ],
+    "key": {
+        "algo": "rsa",
+        "size": 2048
+    },
+    "names": [
+        {
+            "C": "CN",
+            "ST": "Shenzhen",
+            "L": "Shenzhen",
+            "O": "UnitoneTech",
+            "OU": "DEV"
+        }
+    ]
+}
+)
+
+   ref: above has a list of ip's and domain names authenticated to access etcd cluster.
+
+--------------------------------------------------------------------------------------------------
+
+7. Generated etcd cert
+
+   $ cfssl gencert -ca=ca.pem -ca-key=ca-key.pem -config=ca-config.json -profile=uts etcd-csr.json | cfssljson -bare etcd
+(
+[coba@node0 cfg]$ cfssl gencert -ca=ca.pem -ca-key=ca-key.pem -config=ca-config.json -profile=uts etcd-csr.json | cfssljson -bare etcd
+2018/09/01 03:59:03 [INFO] generate received request
+2018/09/01 03:59:03 [INFO] received CSR
+2018/09/01 03:59:03 [INFO] generating key: rsa-2048
+2018/09/01 03:59:04 [INFO] encoded CSR
+2018/09/01 03:59:04 [INFO] signed certificate with serial number 413063891872787492741399354512413821015142885783
+[coba@node0 cfg]$
+)
+
+   - list created ca files
+   $ ls -l etcd*
+(
+[coba@node0 cfg]$ ls -l etcd*
+-rw-r--r--. 1 coba coba 1098 Sep  1 03:59 etcd.csr
+-rw-rw-r--. 1 coba coba  424 Sep  1 03:54 etcd-csr.json
+-rw-------. 1 coba coba 1675 Sep  1 03:59 etcd-key.pem
+-rw-rw-r--. 1 coba coba 1428 Sep  1 03:59 etcd.pem
+[coba@node0 cfg]$
+)
+
+  ref: we can use cfssl or openssl to view generated cert
+
+--------------------------------------------------------------------------------------------------
+
+8. Install etcd package
+
+   # yum install -y etcd
+
+   - create /var/lib/etcd directory in all nodes
+   # mkdir -p /var/lib/etcd
+
+--------------------------------------------------------------------------------------------------
+
+9. Setting etcd service config file
+   
+   - a. backup org config file
+   $ cp /usr/lib/systemd/system/etcd.service{,.backup}
+
+ 
+   - b. make etcd ssl directory to store cert files
+   # mkdir /etc/etcd/ssl
+
+   (node0)
+   - c. copy cert files to its directory
+   # cp /home/coba/cfg/etcd.pem  /etc/etcd/ssl
+   # cp /home/coba/cfg/etcd-key.pem  /etc/etcd/ssl
+   # cp /home/coba/cfg/ca.pem  /etc/etcd/ssl
+
+
+   (
+     for other node, use scp to copy cert files from node0 to remote host (node1 and node2)
+     # scp /home/coba/cfg/* root@192.168.112.101:/root/cfg
+     # scp /home/coba/cfg/* root@192.168.112.102:/root/cfg
+
+         (node1 and node2) 
+         - (for node1 and node2) transfer cert file to target directory 
+         # cp /root/cfg/etcd.pem  /etc/etcd/ssl
+         # cp /root/cfg/etcd-key.pem  /etc/etcd/ssl
+         # cp /root/cfg/ca.pem  /etc/etcd/ssl
+   )
+
+   - a. export etcd name and ip address (exported parameters will used to generate service config file)
+   - ATTENTION: change to use correct parameters for every node
+
+   - for node0,
+   # export ETCD_NAME=node0
+   # export INTERNAL_IP=192.168.112.100
+
+   (
+      for other nodes, 
+      node1:
+           # export ETCD_NAME=node1
+           # export INTERNAL_IP=192.168.112.101  
+
+      node2:
+           # export ETCD_NAME=node2
+           # export INTERNAL_IP=192.168.112.102     
+   )
+   
+   - b. generate /usr/lib/systemd/system/etcd.service file 
+        (import node parameters to customize configuration)
+        (seems etcd command sometimes use 127.0.0.1:4001, so we add 4001 port for listen_client_url as followed)
+
+   # cat > /usr/lib/systemd/system/etcd.service <<EOF
+[Unit]
+Description=etcd server
+After=network.target
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=notify
+WorkingDirectory=/var/lib/etcd/
+EnvironmentFile=-/etc/etcd/etcd.conf
+ExecStart=/usr/bin/etcd \
+  --name=${ETCD_NAME} \
+  --cert-file=/etc/etcd/ssl/etcd.pem \
+  --key-file=/etc/etcd/ssl/etcd-key.pem \
+  --peer-cert-file=/etc/etcd/ssl/etcd.pem \
+  --peer-key-file=/etc/etcd/ssl/etcd-key.pem \
+  --trusted-ca-file=/etc/etcd/ssl/ca.pem \
+  --peer-trusted-ca-file=/etc/etcd/ssl/ca.pem \
+  --initial-advertise-peer-urls=https://${INTERNAL_IP}:2380 \
+  --listen-peer-urls=https://${INTERNAL_IP}:2380 \
+  --listen-client-urls=https://${INTERNAL_IP}:2379,https://127.0.0.1:2379,https://127.0.0.1:4001 \
+  --advertise-client-urls=https://${INTERNAL_IP}:2379 \
+  --initial-cluster-token=etcd-cluster-1 \
+  --initial-cluster="node0=https://192.168.112.100:2380,node1=https://192.168.112.101:2380,node2=https://192.168.112.102:2380" \
+  --initial-cluster-state=new \
+  --data-dir=/var/lib/etcd
+Restart=on-failure
+RestartSec=5
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+---
+
+   ref:
+   - cert-file and key-file is public cert and private cert for etcd
+   - peer-cert-file and peer-key-file is public cert and private cert for peers communications of etcd
+   - trusted-ca-file is client CA cert
+   - peer-trusted-ca-file is CA cert of peers
+   - initial-cluster-state new means it is a new initialized cluster
+   - name must in initial-cluster list
+
+
+--------------------------------------------------------------------------------------------------
+
+10. Start etcd server
+
+    # systemctl daemon-reload
+    # systemctl enable etcd
+    # systemctl start etcd
+    # systemctl status etcd
+
+--------------------------------------------------------------------------------------------------
+
+11. Check cluster status
+
+    *********************************************************************************
+    MUST DISABLE PROXY FIRST. PROXY WILL BLOCK, INTERFERENCE, AND ROUTE ETCD TRAFFIC
+    *********************************************************************************
+
+    - check cluster member (need include global options and cert file parameters, or cmd can not exec without error)
+    # etcdctl --ca-file=/etc/etcd/ssl/ca.pem --cert-file=/etc/etcd/ssl/etcd.pem --key-file=/etc/etcd/ssl/etcd-key.pem --endpoints=https://192.168.112.100:2379,https://192.168.112.101:2379,https://192.168.112.102:2379 member list
+(
+[root@node0 cfg]# etcdctl --ca-file=/etc/etcd/ssl/ca.pem --cert-file=/etc/etcd/ssl/etcd.pem --key-file=/etc/etcd/ssl/etcd-key.pem --endpoints=https://192.168.112.100:2379,https://192.168.112.101:2379,https://192.168.112.102:2379 member list
+250bd594aa5cf5f3: name=node1 peerURLs=https://192.168.112.101:2380 clientURLs=https://192.168.112.101:2379 isLeader=true
+edff404bb2463d16: name=node0 peerURLs=https://192.168.112.100:2380 clientURLs=https://192.168.112.100:2379 isLeader=false
+fc21c9955074ef9c: name=node2 peerURLs=https://192.168.112.102:2380 clientURLs=https://192.168.112.102:2379 isLeader=false
+[root@node0 cfg]#
+)
+    - check cluster health
+    # etcdctl --ca-file=/etc/etcd/ssl/ca.pem --cert-file=/etc/etcd/ssl/etcd.pem --key-file=/etc/etcd/ssl/etcd-key.pem --endpoints=https://192.168.112.100:2379,https://192.168.112.101:2379,https://192.168.112.102:2379 cluster-health
+(
+[root@node0 cfg]# etcdctl --ca-file=/etc/etcd/ssl/ca.pem --cert-file=/etc/etcd/ssl/etcd.pem --key-file=/etc/etcd/ssl/etcd-key.pem --endpoints=https://192.168.112.100:2379,https://192.168.112.101:2379,https://192.168.112.102:2379 cluster-health
+member 250bd594aa5cf5f3 is healthy: got healthy result from https://192.168.112.101:2379
+member edff404bb2463d16 is healthy: got healthy result from https://192.168.112.100:2379
+member fc21c9955074ef9c is healthy: got healthy result from https://192.168.112.102:2379
+cluster is healthy
+[root@node0 cfg]#
+)
+  
+   - create and export etcd option to simplify cmd line input
+   # cat >> /etc/environment << EOF
+
+##### export etcd global options
+export opt="--ca-file=/etc/etcd/ssl/ca.pem --cert-file=/etc/etcd/ssl/etcd.pem --key-file=/etc/etcd/ssl/etcd-key.pem --endpoints=https://192.168.112.100:2379,https://192.168.112.101:2379,https://192.168.112.102:2379"
+export options="--ca-file=/etc/etcd/ssl/ca.pem --cert-file=/etc/etcd/ssl/etcd.pem --key-file=/etc/etcd/ssl/etcd-key.pem --endpoints=https://192.168.112.100:2379,https://192.168.112.101:2379,https://192.168.112.102:2379"
+export etcd_opt="--ca-file=/etc/etcd/ssl/ca.pem --cert-file=/etc/etcd/ssl/etcd.pem --key-file=/etc/etcd/ssl/etcd-key.pem --endpoints=https://192.168.112.100:2379,https://192.168.112.101:2379,https://192.168.112.102:2379"
+export etcd_options="--ca-file=/etc/etcd/ssl/ca.pem --cert-file=/etc/etcd/ssl/etcd.pem --key-file=/etc/etcd/ssl/etcd-key.pem --endpoints=https://192.168.112.100:2379,https://192.168.112.101:2379,https://192.168.112.102:2379"
+EOF
+---
+
+
+--- 
+   ( cmd line input:
+     export opt="--ca-file=/etc/etcd/ssl/ca.pem --cert-file=/etc/etcd/ssl/etcd.pem --key-file=/etc/etcd/ssl/etcd-key.pem --endpoints=https://192.168.112.100:2379,https://192.168.112.101:2379,https://192.168.112.102:2379"
+   )
+
+   - use option
+   # etcdctl $opt cluster-health
+   # etcdctl $opt member list
+
+--------------------------------------------------------------------------------------------------
+   !!! IT IS VERY IMPORTANT TO SETUP TIME SYNC FOR CLUSTER
+----------------------------------------------------------------
+
+12. Add ntp service, and sync time of node1 and node2 to node0 
+
+    - to avoid sync issue caused by time difference in cluster, we use ntp server for cluster
+
+    node0 - as local ntp server 
+            . accept public ntp server as upstream
+            . allow local node (node1, node2) to accees (as a local ntp server)
+
+    node1, node2 - as ntp client
+            . as ntp client
+            . use local ntp server (node0) as its ntp server    
+
+   ------ Enable firewall setting for NTP traffic
+
+    - enable firewall to pass ntp traffice
+    # firewall-cmd --permanent --add-service=ntp 
+    # firewall-cmd --reload
+
+    ------ Install NTP server (on each node)
+    - install ntp service
+    # yum install -y ntp
+
+    ------ Setting ntp configuration on master server and client
+    ------------------------------------------
+    . MASTER NODE
+    >> node0 - master ntp server (node0 as ntp server)    
+
+    - sync time with public ntp server
+    #  ntpdate cn.pool.ntp.org
+
+    - write time to hw clock
+    # hwclock -w
+
+    - change master ntpd config file to enable cluster node access
+    # nano /etc/ntp.conf
+    --- add
+    # add subnet access enable
+    restrict 192.168.0.0 mask 255.255.0.0  nomodify notrap
+    ---  
+
+    - enable ntp service
+    # systemctl enable ntpd
+    # systemctl start ntpd
+    # systemctl status ntpd
+
+
+    - watch ntp working
+    # watch ntpq -p
+
+    .CLIENT NODES
+    -----------------------------------------
+    >> (node1 and node2 as client)
+    
+    -- mask public server and use local server (node0)
+    - change ntpd config of client
+    # nano /etc/ntp.conf
+    ---
+    # add local restrict (node0 ntp server)
+    restrict 192.168.112.100
+
+    # Hosts on local network are less restricted.
+    #restrict 192.168.1.0 mask 255.255.255.0 nomodify notrap
+    
+    # use local server
+    server 192.168.112.100
+
+    # mask public server
+    # Use public servers from the pool.ntp.org project.
+    # Please consider joining the pool (http://www.pool.ntp.org/join.html).
+    #server 0.centos.pool.ntp.org iburst
+    #server 1.centos.pool.ntp.org iburst
+    #server 2.centos.pool.ntp.org iburst
+    #server 3.centos.pool.ntp.org iburst
+    ---
+       
+    # systemctl enable ntpd
+    # systemctl start ntpd
+    # systemctl status ntpd
+
+    >> node1 and node2 
+    - check ntp working 
+    # watch ntpq -p
+
+    ( --- need stop ntpd service first to use ntpdate cmd
+    - exec date sync with node0
+    # ntpdate 192.168.112.100
+    )
+
+------------------------ .end of etcd datastore cluster (3 nodes)
+
+ref:
+current etcd global options:
+   "--ca-file=/etc/etcd/ssl/ca.pem --cert-file=/etc/etcd/ssl/etcd.pem --key-file=/etc/etcd/ssl/etcd-key.pem --endpoints=https://192.168.112.100:2379,https://192.168.112.101:2379,https://192.168.112.102:2379"
+
